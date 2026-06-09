@@ -378,13 +378,15 @@
       <span>Personal Cloud</span>
     </div>
     <button class="nav-item active" onclick="showPage('dashboard')"><span class="nav-icon">⬡</span> Dashboard</button>
-    <button class="nav-item" onclick="showPage('files')"><span class="nav-icon">📁</span> Files</button>
     <button class="nav-item" onclick="showPage('photos')"><span class="nav-icon">🖼</span> Photos</button>
+    <button class="nav-item" onclick="showPage('videos')"><span class="nav-icon">🎬</span> Videos</button>
+    <button class="nav-item" onclick="showPage('audio')"><span class="nav-icon">🎵</span> Audio</button>
+    <button class="nav-item" onclick="showPage('documents')"><span class="nav-icon">📄</span> Documents</button>
     <button class="nav-item" onclick="showPage('upload')"><span class="nav-icon">⬆</span> Upload</button>
     <div class="mobile-user" onclick="doLogout()" style="cursor:pointer">
-  <div id="mobile-avatar" style="width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#a78bfa);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;">S</div>
-  <span id="mobile-username">Logout</span>
-</div>
+      <div id="mobile-avatar" style="width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#a78bfa);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;">S</div>
+      <span id="mobile-username">Logout</span>
+    </div>
 
 <div class="sidebar-footer">
   <div class="user-chip">
@@ -450,15 +452,38 @@
 
     <!-- PHOTOS -->
     <div class="page" id="page-photos">
-      <div class="page-header">
-        <div class="page-title">Photos</div>
-        <div class="page-sub">Your iPhone photo library</div>
-      </div>
-      <div class="photo-grid" id="photo-grid">
-        <div class="empty" style="grid-column:1/-1"><div class="empty-icon">🌅</div><div class="empty-text">No photos yet</div></div>
-      </div>
-    </div>
+  <div class="page-header">
+    <div class="page-title">Photos</div>
+    <div class="page-sub">Your iPhone photo library</div>
+  </div>
+  <div class="file-list" id="photos-list"></div>
+</div>
+<!-- VIDEOS -->
+<div class="page" id="page-videos">
+  <div class="page-header">
+    <div class="page-title">Videos</div>
+    <div class="page-sub">Your video files</div>
+  </div>
+  <div class="file-list" id="videos-list"></div>
+</div>
 
+<!-- AUDIO -->
+<div class="page" id="page-audio">
+  <div class="page-header">
+    <div class="page-title">Audio</div>
+    <div class="page-sub">Your audio files</div>
+  </div>
+  <div class="file-list" id="audio-list"></div>
+</div>
+
+<!-- DOCUMENTS -->
+<div class="page" id="page-documents">
+  <div class="page-header">
+    <div class="page-title">Documents</div>
+    <div class="page-sub">Your documents</div>
+  </div>
+  <div class="file-list" id="documents-list"></div>
+</div>
     <!-- UPLOAD -->
     <div class="page" id="page-upload">
       <div class="page-header">
@@ -578,9 +603,11 @@ function showPage(name) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   event.currentTarget.classList.add('active');
-  if (name==='files') loadFiles();
-  if (name==='photos') loadPhotos();
-  if (name==='dashboard') loadDashboard();
+ if (name==='dashboard') loadDashboard();
+ if (name==='photos') loadCategory('photos'); 
+ if (name==='videos') loadCategory('videos');
+ if (name==='audio') loadCategory('audio');
+ if (name==='documents') loadCategory('documents');
 }
 
 function formatSize(bytes) {
@@ -638,6 +665,24 @@ async function loadDashboard() {
   } catch(e) { console.error(e); }
 }
 
+async function loadCategory(category) {
+  const el = document.getElementById(`${category}-list`);
+  if (!el) return;
+  el.innerHTML = `<div style="color:var(--text3);font-size:13px;padding:16px">Loading...</div>`;
+  try {
+    const r = await fetch(`/files/list/${category}`, {headers: authHeaders()});
+    if (!r.ok) throw new Error('Failed');
+    const files = await r.json();
+    if (!Array.isArray(files) || files.length === 0) {
+      const icons = {photos:'🖼',videos:'🎬',audio:'🎵',documents:'📄'};
+      el.innerHTML = `<div class="empty"><div class="empty-icon">${icons[category]||'📁'}</div><div class="empty-text">No ${category} yet</div></div>`;
+    } else {
+      el.innerHTML = [...files].reverse().map(f => fileItemHTML(f, `${category}-list`)).join('');
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">Error loading ${category}</div></div>`;
+  }
+}
 function fileItemHTML(f, listId) {
   return `<div class="file-item" id="fitem-${f.id}">
     <span class="file-icon" style="cursor:pointer" onclick="previewFile(${f.id},'${f.name}','${f.type}',${f.size},'${f.uploaded_at}')">${fileIcon(f.type)}</span>

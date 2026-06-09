@@ -9,8 +9,31 @@ from pathlib import Path
 
 router = APIRouter(prefix="/files", tags=["files"])
 
-STORAGE_DIR = Path("F:/storage/files")
-STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+PHOTOS_DIR = Path("F:/storage/photos")
+VIDEOS_DIR = Path("F:/storage/videos")
+AUDIO_DIR = Path("F:/storage/audio")
+DOCS_DIR = Path("F:/storage/documents")
+OTHERS_DIR = Path("F:/storage/others")
+
+for d in [PHOTOS_DIR, VIDEOS_DIR, AUDIO_DIR, DOCS_DIR, OTHERS_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
+
+def get_storage_dir(content_type: str) -> Path:
+    if not content_type:
+        return OTHERS_DIR
+    if content_type.startswith("image/"):
+        return PHOTOS_DIR
+    if content_type.startswith("video/"):
+        return VIDEOS_DIR
+    if content_type.startswith("audio/"):
+        return AUDIO_DIR
+    if any(x in content_type for x in [
+        "pdf", "msword", "wordprocessingml",
+        "ms-excel", "spreadsheetml",
+        "text/plain", "powerpoint", "presentationml"
+    ]):
+        return DOCS_DIR
+    return OTHERS_DIR
 
 def compute_hash(file_bytes: bytes) -> str:
     """Creates a unique fingerprint for a file — used to detect duplicates"""
@@ -37,18 +60,32 @@ async def upload_file(
     # Save file to disk with a unique name
     ext = Path(file.filename).suffix
     unique_name = f"{uuid.uuid4()}{ext}"
-    save_path = STORAGE_DIR / unique_name
+    storage_dir = get_storage_dir(file.content_type)
+    save_path = storage_dir / unique_name
 
     with open(save_path, "wb") as f:
         f.write(file_bytes)
 
     # Save file record to database
+    # Determine category
+    ct = file.content_type or ""
+    if ct.startswith("image/"): category = "photos"
+    elif ct.startswith("video/"): category = "videos"
+    elif ct.startswith("audio/"): category = "audio"
+    elif ct in ["application/pdf","application/msword",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.ms-excel",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "text/plain"]: category = "documents"
+    else: category = "others"
+
     db_file = models.File(
         filename=unique_name,
         original_name=file.filename,
         file_type=file.content_type,
         file_size=len(file_bytes),
         file_hash=file_hash,
+        file_category=category,
         storage_path=str(save_path),
         owner_id=current_user.id
     )
@@ -178,3 +215,26 @@ def direct_download(
         filename=file.original_name,
         media_type=file.file_type
     )
+
+    
+@router.get("/list/{category}")
+def list_by_category(
+        category: str,
+        db: Session = Depends(get_db),
+        current_user: models.User = Depends(get_current_user)
+    ):
+        files = db.query(models.File).filter(
+            models.File.owner_id == current_user.id,
+            models.File.file_category == category
+        ).all()
+        return [
+            {
+                "id": f.id,
+                "name": f.original_name,
+                "type": f.file_type,
+                "size": f.file_size,
+                "category": f.file_category,
+                "uploaded_at": f.uploaded_at
+            }
+            for f in files
+        ]

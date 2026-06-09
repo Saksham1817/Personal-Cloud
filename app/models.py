@@ -23,11 +23,15 @@ class File(Base):
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, nullable=False)
     original_name = Column(String, nullable=False)
-    file_type = Column(String)              # e.g. "image/jpeg"
-    file_size = Column(BigInteger)          # size in bytes
-    file_hash = Column(String, index=True)  # to detect duplicate photos
-    storage_path = Column(String, nullable=False)  # where it lives on disk
+    file_type = Column(String)
+    file_size = Column(BigInteger)
+    file_hash = Column(String, index=True)
+    file_category = Column(String, default="others")
+    storage_path = Column(String, nullable=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner = relationship("User", back_populates="files")
 
     # Which user owns this file
     owner_id = Column(Integer, ForeignKey("users.id"))

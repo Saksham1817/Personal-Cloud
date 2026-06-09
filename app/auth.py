@@ -10,7 +10,7 @@ from app import models
 # Change this to any long random string — this is your server's secret
 SECRET_KEY = "x7k#mP9@qL2$nR5vW8"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # token lasts 24 hours
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # token lasts 24 hours
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="users/login")
 
