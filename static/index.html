@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Personal Cloud</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #111118;
+    --bg3: #1a1a24;
+    --bg4: #22222e;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --accent: #7c6aff;
+    --accent2: #a78bfa;
+    --accent-glow: rgba(124,106,255,0.15);
+    --text: #f0f0f8;
+    --text2: #9090a8;
+    --text3: #5a5a72;
+    --green: #34d399;
+    --green-bg: rgba(52,211,153,0.1);
+    --red: #f87171;
+    --red-bg: rgba(248,113,113,0.1);
+    --amber: #fbbf24;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Syne',sans-serif; min-height:100vh; overflow-x:hidden; }
+
+  /* noise overlay */
+  body::before {
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    opacity:0.4;
+  }
+
+  /* ── AUTH SCREEN ── */
+  #auth-screen {
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:100;
+    background:var(--bg);
+  }
+  .auth-card {
+    width:100%; max-width:420px; padding:48px 40px;
+    background:var(--bg2); border:1px solid var(--border2);
+    border-radius:20px; position:relative; overflow:hidden;
+  }
+  .auth-card::before {
+    content:''; position:absolute; top:-80px; left:50%; transform:translateX(-50%);
+    width:200px; height:200px; border-radius:50%;
+    background:var(--accent-glow); filter:blur(60px); pointer-events:none;
+  }
+  .auth-logo {
+    display:flex; align-items:center; gap:10px; margin-bottom:32px;
+  }
+  .auth-logo-icon {
+    width:36px; height:36px; border-radius:10px;
+    background:linear-gradient(135deg,var(--accent),#a78bfa);
+    display:flex; align-items:center; justify-content:center; font-size:18px;
+  }
+  .auth-logo span { font-size:18px; font-weight:700; letter-spacing:-0.5px; }
+  .auth-tabs { display:flex; gap:0; margin-bottom:28px; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
+  .auth-tab {
+    flex:1; padding:10px; text-align:center; cursor:pointer; font-size:13px; font-weight:600;
+    color:var(--text3); transition:all 0.2s; background:transparent; border:none; font-family:'Syne',sans-serif;
+  }
+  .auth-tab.active { background:var(--bg4); color:var(--text); }
+  .form-group { margin-bottom:16px; }
+  .form-group label { display:block; font-size:12px; color:var(--text2); margin-bottom:6px; font-weight:500; letter-spacing:0.5px; text-transform:uppercase; }
+  .form-group input {
+    width:100%; padding:12px 14px; background:var(--bg3); border:1px solid var(--border);
+    border-radius:var(--radius-sm); color:var(--text); font-size:14px; font-family:'Syne',sans-serif;
+    outline:none; transition:border-color 0.2s;
+  }
+  .form-group input:focus { border-color:var(--accent); }
+  .btn-primary {
+    width:100%; padding:13px; background:var(--accent);
+    border:none; border-radius:var(--radius-sm); color:#fff; font-size:14px; font-weight:700;
+    cursor:pointer; font-family:'Syne',sans-serif; letter-spacing:0.3px;
+    transition:all 0.2s; margin-top:8px;
+  }
+  .btn-primary:hover { background:#6c5ae0; transform:translateY(-1px); }
+  .btn-primary:active { transform:translateY(0); }
+  .auth-msg { font-size:12px; text-align:center; margin-top:12px; min-height:18px; }
+  .auth-msg.error { color:var(--red); }
+  .auth-msg.success { color:var(--green); }
+
+  /* ── MAIN APP ── */
+  #app { display:none; min-height:100vh; }
+
+  /* sidebar */
+  .sidebar {
+    position:fixed; top:0; left:0; width:220px; height:100vh;
+    background:var(--bg2); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; padding:24px 16px; z-index:10;
+  }
+  .sidebar-logo { display:flex; align-items:center; gap:10px; padding:0 8px; margin-bottom:32px; }
+  .sidebar-logo-icon {
+    width:30px; height:30px; border-radius:8px;
+    background:linear-gradient(135deg,var(--accent),#a78bfa);
+    display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;
+  }
+  .sidebar-logo span { font-size:15px; font-weight:700; }
+  .nav-item {
+    display:flex; align-items:center; gap:10px; padding:10px 12px;
+    border-radius:var(--radius-sm); cursor:pointer; color:var(--text2);
+    font-size:13px; font-weight:600; transition:all 0.15s; margin-bottom:2px;
+    border:none; background:transparent; font-family:'Syne',sans-serif; width:100%; text-align:left;
+  }
+  .nav-item:hover { background:var(--bg3); color:var(--text); }
+  .nav-item.active { background:var(--accent-glow); color:var(--accent2); }
+  .nav-icon { font-size:16px; width:20px; text-align:center; }
+  .sidebar-footer { margin-top:auto; padding-top:16px; border-top:1px solid var(--border); }
+  .user-chip {
+    display:flex; align-items:center; gap:10px; padding:10px 12px;
+    background:var(--bg3); border-radius:var(--radius-sm);
+  }
+  .user-avatar {
+    width:28px; height:28px; border-radius:50%;
+    background:linear-gradient(135deg,var(--accent),#a78bfa);
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;
+  }
+  .user-name { font-size:12px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .logout-btn {
+    background:none; border:none; color:var(--text3); cursor:pointer; font-size:16px;
+    transition:color 0.2s; padding:2px;
+  }
+  .logout-btn:hover { color:var(--red); }
+
+  /* main content */
+  .main { margin-left:220px; padding:32px; min-height:100vh; position:relative; z-index:1; }
+
+  /* page */
+  .page { display:none; }
+  .page.active { display:block; }
+  .page-header { margin-bottom:28px; }
+  .page-title { font-size:24px; font-weight:700; letter-spacing:-0.5px; }
+  .page-sub { font-size:13px; color:var(--text2); margin-top:4px; }
+
+  /* stat cards */
+  .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:28px; }
+  .stat-card {
+    background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius);
+    padding:20px; position:relative; overflow:hidden;
+  }
+  .stat-card::after {
+    content:''; position:absolute; top:0; right:0;
+    width:60px; height:60px; border-radius:0 var(--radius) 0 60px;
+    background:var(--accent-glow);
+  }
+  .stat-label { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:0.8px; font-weight:600; margin-bottom:8px; }
+  .stat-value { font-size:28px; font-weight:700; letter-spacing:-1px; }
+  .stat-sub { font-size:11px; color:var(--text2); margin-top:4px; }
+
+  /* upload zone */
+  .upload-zone {
+    border:2px dashed var(--border2); border-radius:var(--radius);
+    padding:40px; text-align:center; cursor:pointer;
+    transition:all 0.2s; background:var(--bg2); margin-bottom:24px;
+    position:relative;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color:var(--accent); background:var(--accent-glow); }
+  .upload-icon { font-size:36px; margin-bottom:12px; display:block; }
+  .upload-title { font-size:15px; font-weight:600; margin-bottom:4px; }
+  .upload-sub { font-size:12px; color:var(--text2); }
+  .upload-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+
+  /* progress bar */
+  .upload-progress { display:none; margin-bottom:20px; }
+  .progress-bar-wrap { background:var(--bg3); border-radius:999px; height:6px; overflow:hidden; margin-top:8px; }
+  .progress-bar { height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:999px; width:0%; transition:width 0.3s; }
+  .progress-label { font-size:12px; color:var(--text2); margin-bottom:4px; }
+
+  /* file list */
+  .section-title { font-size:13px; font-weight:700; color:var(--text2); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:12px; }
+  .file-list { display:flex; flex-direction:column; gap:6px; }
+  .file-item {
+    display:flex; align-items:center; gap:12px; padding:12px 16px;
+    background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-sm);
+    transition:border-color 0.15s;
+  }
+  .file-item:hover { border-color:var(--border2); }
+  .file-icon { font-size:22px; flex-shrink:0; }
+  .file-info { flex:1; min-width:0; }
+  .file-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .file-meta { font-size:11px; color:var(--text3); margin-top:2px; font-family:'JetBrains Mono',monospace; }
+  .file-actions { display:flex; gap:6px; flex-shrink:0; }
+  .icon-btn {
+    width:30px; height:30px; border-radius:6px; border:1px solid var(--border);
+    background:var(--bg3); cursor:pointer; font-size:14px; color:var(--text2);
+    display:flex; align-items:center; justify-content:center; transition:all 0.15s;
+  }
+  .icon-btn:hover { background:var(--bg4); color:var(--text); }
+  .icon-btn.danger:hover { background:var(--red-bg); color:var(--red); border-color:var(--red); }
+
+  /* photo gallery */
+  .photo-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .photo-card {
+    aspect-ratio:1; border-radius:var(--radius-sm); overflow:hidden;
+    background:var(--bg3); border:1px solid var(--border); position:relative; cursor:pointer;
+    transition:transform 0.2s;
+  }
+  .photo-card:hover { transform:scale(1.02); }
+  .photo-card img { width:100%; height:100%; object-fit:cover; display:block; }
+  .photo-card .photo-overlay {
+    position:absolute; inset:0; background:rgba(0,0,0,0.5);
+    display:none; align-items:flex-end; padding:8px;
+  }
+  .photo-card:hover .photo-overlay { display:flex; }
+  .photo-name { font-size:10px; color:#fff; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .photo-placeholder { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:6px; }
+  .photo-placeholder span:first-child { font-size:28px; }
+  .photo-placeholder span:last-child { font-size:10px; color:var(--text3); }
+
+  /* empty state */
+  .empty { text-align:center; padding:48px; color:var(--text3); }
+  .empty-icon { font-size:40px; margin-bottom:12px; }
+  .empty-text { font-size:14px; }
+
+  /* toast */
+  #toast {
+    position:fixed; bottom:24px; right:24px; z-index:9999;
+    background:var(--bg3); border:1px solid var(--border2); border-radius:var(--radius-sm);
+    padding:12px 18px; font-size:13px; font-weight:600;
+    transform:translateY(80px); opacity:0; transition:all 0.3s;
+    display:flex; align-items:center; gap:8px;
+  }
+  #toast.show { transform:translateY(0); opacity:1; }
+  #toast.success { border-color:var(--green); color:var(--green); }
+  #toast.error { border-color:var(--red); color:var(--red); }
+
+  /* storage bar */
+  .storage-bar-wrap { background:var(--bg3); border-radius:999px; height:8px; overflow:hidden; margin:8px 0 4px; }
+  .storage-bar { height:100%; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:999px; transition:width 0.6s; }
+
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .badge-green { background:var(--green-bg); color:var(--green); }
+
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .page.active { animation:fadeIn 0.25s ease; }
+
+  /* Preview Modal */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:1000;
+  display:none; align-items:center; justify-content:center; padding:20px;
+}
+.modal-overlay.open { display:flex; }
+.modal-box {
+  background:var(--bg2); border:1px solid var(--border2);
+  border-radius:16px; width:100%; max-width:800px; max-height:90vh;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.modal-header {
+  display:flex; align-items:center; gap:12px; padding:16px 20px;
+  border-bottom:1px solid var(--border);
+}
+.modal-title { flex:1; font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.modal-actions { display:flex; gap:8px; }
+.modal-body { flex:1; overflow:auto; display:flex; align-items:center; justify-content:center; padding:20px; min-height:300px; }
+.modal-body img { max-width:100%; max-height:65vh; border-radius:8px; object-fit:contain; }
+.modal-body video { max-width:100%; max-height:65vh; border-radius:8px; }
+.modal-body audio { width:100%; }
+.modal-body iframe { width:100%; height:65vh; border:none; border-radius:8px; background:#fff; }
+.modal-meta { padding:12px 20px; border-top:1px solid var(--border); display:flex; gap:16px; }
+.modal-meta-item { font-size:11px; color:var(--text3); }
+.modal-meta-item span { color:var(--text2); font-weight:600; }
+.btn-download {
+  display:flex; align-items:center; gap:6px; padding:8px 16px;
+  background:var(--accent); border:none; border-radius:var(--radius-sm);
+  color:#fff; font-size:13px; font-weight:600; cursor:pointer;
+  font-family:'Syne',sans-serif; transition:background 0.2s;
+}
+.btn-download:hover { background:#6c5ae0; }
+.no-preview { text-align:center; color:var(--text3); }
+.no-preview .no-preview-icon { font-size:48px; margin-bottom:12px; }
+.no-preview p { font-size:13px; }
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-icon">☁</div>
+      <span>Personal Cloud</span>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchTab('login')">Sign In</button>
+      <button class="auth-tab" onclick="switchTab('register')">Register</button>
+    </div>
+
+    <div id="login-form">
+      <div class="form-group"><label>Username</label><input id="l-user" type="text" placeholder="yourname"/></div>
+      <div class="form-group"><label>Password</label><input id="l-pass" type="password" placeholder="••••••••"/></div>
+      <button class="btn-primary" onclick="doLogin()">Sign In →</button>
+    </div>
+
+    <div id="register-form" style="display:none">
+      <div class="form-group"><label>Username</label><input id="r-user" type="text" placeholder="yourname"/></div>
+      <div class="form-group"><label>Email</label><input id="r-email" type="email" placeholder="you@email.com"/></div>
+      <div class="form-group"><label>Password</label><input id="r-pass" type="password" placeholder="••••••••"/></div>
+      <button class="btn-primary" onclick="doRegister()">Create Account →</button>
+    </div>
+    <div class="auth-msg" id="auth-msg"></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">☁</div>
+      <span>Personal Cloud</span>
+    </div>
+    <button class="nav-item active" onclick="showPage('dashboard')"><span class="nav-icon">⬡</span> Dashboard</button>
+    <button class="nav-item" onclick="showPage('files')"><span class="nav-icon">📁</span> Files</button>
+    <button class="nav-item" onclick="showPage('photos')"><span class="nav-icon">🖼</span> Photos</button>
+    <button class="nav-item" onclick="showPage('upload')"><span class="nav-icon">⬆</span> Upload</button>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar" id="user-avatar">U</div>
+        <span class="user-name" id="user-display">User</span>
+        <button class="logout-btn" onclick="doLogout()" title="Logout">✕</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div class="page-title">Dashboard</div>
+        <div class="page-sub">Welcome back — your cloud at a glance</div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Total Files</div>
+          <div class="stat-value" id="stat-files">—</div>
+          <div class="stat-sub">across all types</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Photos</div>
+          <div class="stat-value" id="stat-photos">—</div>
+          <div class="stat-sub">images synced</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Storage Used</div>
+          <div class="stat-value" id="stat-storage">—</div>
+          <div class="stat-sub">total size</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Disk Free</div>
+            <div class="stat-value" id="stat-free">—</div>
+            <div class="stat-sub" id="stat-percent">of total drive</div>
+            <div class="storage-bar-wrap" style="margin-top:10px">
+                <div class="storage-bar" id="stat-bar" style="width:0%"></div>
+            </div>
+            </div>
+      </div>
+      <div class="section-title">Recent Uploads</div>
+      <div class="file-list" id="recent-list">
+        <div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No files yet</div></div>
+      </div>
+    </div>
+
+    <!-- FILES -->
+    <div class="page" id="page-files">
+      <div class="page-header">
+        <div class="page-title">All Files</div>
+        <div class="page-sub">Every file stored on your server</div>
+      </div>
+      <div class="file-list" id="all-files-list">
+        <div class="empty"><div class="empty-icon">📂</div><div class="empty-text">No files uploaded yet</div></div>
+      </div>
+    </div>
+
+    <!-- PHOTOS -->
+    <div class="page" id="page-photos">
+      <div class="page-header">
+        <div class="page-title">Photos</div>
+        <div class="page-sub">Your iPhone photo library</div>
+      </div>
+      <div class="photo-grid" id="photo-grid">
+        <div class="empty" style="grid-column:1/-1"><div class="empty-icon">🌅</div><div class="empty-text">No photos yet</div></div>
+      </div>
+    </div>
+
+    <!-- UPLOAD -->
+    <div class="page" id="page-upload">
+      <div class="page-header">
+        <div class="page-title">Upload</div>
+        <div class="page-sub">Drop any file — photos, videos, documents, audio</div>
+      </div>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" multiple onchange="handleFiles(this.files)"/>
+        <span class="upload-icon">☁</span>
+        <div class="upload-title">Drop files here or click to browse</div>
+        <div class="upload-sub">Photos · Videos · Documents · Audio · Anything</div>
+      </div>
+      <div class="upload-progress" id="upload-progress">
+        <div class="progress-label" id="progress-label">Uploading...</div>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      </div>
+      <div class="section-title">Upload History</div>
+      <div class="file-list" id="upload-history"></div>
+    </div>
+
+  </main>
+</div>
+<!-- Preview Modal -->
+<div class="modal-overlay" id="preview-modal" onclick="closeModal(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-filename">filename.jpg</span>
+      <div class="modal-actions">
+        <button class="btn-download" id="modal-download-btn" onclick="downloadFile(0)">⬇ Download</button>
+        <button class="icon-btn" onclick="closePreview()">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-meta">
+      <div class="modal-meta-item">Size: <span id="modal-size">—</span></div>
+      <div class="modal-meta-item">Uploaded: <span id="modal-date">—</span></div>
+      <div class="modal-meta-item">Type: <span id="modal-type">—</span></div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const API = ' ';
+let token = localStorage.getItem('cloud_token');
+let currentUser = localStorage.getItem('cloud_user') || '';
+
+if (token) showApp();
+
+function switchTab(t) {
+  document.getElementById('login-form').style.display = t==='login'?'block':'none';
+  document.getElementById('register-form').style.display = t==='register'?'block':'none';
+  document.querySelectorAll('.auth-tab').forEach((el,i)=>el.classList.toggle('active',(t==='login'&&i===0)||(t==='register'&&i===1)));
+  setAuthMsg('','');
+}
+
+function setAuthMsg(msg, type) {
+  const el = document.getElementById('auth-msg');
+  el.textContent = msg;
+  el.className = 'auth-msg' + (type?' '+type:'');
+}
+
+async function doLogin() {
+  const user = document.getElementById('l-user').value.trim();
+  const pass = document.getElementById('l-pass').value;
+  if (!user||!pass) return setAuthMsg('Fill in all fields','error');
+  setAuthMsg('Signing in...','');
+  try {
+    const form = new URLSearchParams({username:user,password:pass});
+    const r = await fetch(`${API}/users/login`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form});
+    const d = await r.json();
+    if (!r.ok) return setAuthMsg(d.detail||'Login failed','error');
+    token = d.access_token;
+    currentUser = user;
+    localStorage.setItem('cloud_token',token);
+    localStorage.setItem('cloud_user',user);
+    showApp();
+  } catch(e) { setAuthMsg('Cannot reach server — is it running?','error'); }
+}
+
+async function doRegister() {
+  const user = document.getElementById('r-user').value.trim();
+  const email = document.getElementById('r-email').value.trim();
+  const pass = document.getElementById('r-pass').value;
+  if (!user||!email||!pass) return setAuthMsg('Fill in all fields','error');
+  setAuthMsg('Creating account...','');
+  try {
+    const r = await fetch(`${API}/users/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user,email,password:pass})});
+    const d = await r.json();
+    if (!r.ok) return setAuthMsg(d.detail||'Registration failed','error');
+    setAuthMsg('Account created! Sign in now.','success');
+    switchTab('login');
+    document.getElementById('l-user').value = user;
+  } catch(e) { setAuthMsg('Cannot reach server — is it running?','error'); }
+}
+
+function showApp() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('user-display').textContent = currentUser;
+  document.getElementById('user-avatar').textContent = currentUser[0]?.toUpperCase()||'U';
+  loadDashboard();
+}
+
+function doLogout() {
+  token = null; currentUser = '';
+  localStorage.removeItem('cloud_token'); localStorage.removeItem('cloud_user');
+  location.reload();
+}
+
+function authHeaders() { return {Authorization:`Bearer ${token}`}; }
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if (name==='files') loadFiles();
+  if (name==='photos') loadPhotos();
+  if (name==='dashboard') loadDashboard();
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return bytes+' B';
+  if (bytes < 1048576) return (bytes/1024).toFixed(1)+' KB';
+  if (bytes < 1073741824) return (bytes/1048576).toFixed(1)+' MB';
+  return (bytes/1073741824).toFixed(2)+' GB';
+}
+
+function fileIcon(type) {
+  if (!type) return '📄';
+  if (type.startsWith('image')) return '🖼';
+  if (type.startsWith('video')) return '🎬';
+  if (type.startsWith('audio')) return '🎵';
+  if (type.includes('pdf')) return '📕';
+  if (type.includes('zip')||type.includes('compressed')) return '🗜';
+  return '📄';
+}
+
+function timeAgo(dateStr) {
+  const d = new Date(dateStr+'Z');
+  const diff = (Date.now()-d)/1000;
+  if (diff<60) return 'just now';
+  if (diff<3600) return Math.floor(diff/60)+'m ago';
+  if (diff<86400) return Math.floor(diff/3600)+'h ago';
+  return Math.floor(diff/86400)+'d ago';
+}
+
+async function loadDashboard() {
+  try {
+    const [fr, pr, sr] = await Promise.all([
+      fetch(`${API}/files/list`,{headers:authHeaders()}),
+      fetch(`${API}/photos/list`,{headers:authHeaders()}),
+      fetch(`${API}/files/storage-stats`,{headers:authHeaders()})
+    ]);
+    const files = await fr.json();
+    const photos = await pr.json();
+    const stats = await sr.json();
+
+    document.getElementById('stat-files').textContent = Array.isArray(files)?files.length:'—';
+    document.getElementById('stat-photos').textContent = Array.isArray(photos)?photos.length:'—';
+    document.getElementById('stat-storage').textContent = formatSize(stats.user_used);
+    document.getElementById('stat-free').textContent = formatSize(stats.disk_free);
+    document.getElementById('stat-percent').textContent = `${stats.percent_used}% of drive used`;
+    document.getElementById('stat-bar').style.width = stats.percent_used + '%';
+
+    const recentList = document.getElementById('recent-list');
+    if (!Array.isArray(files)||files.length===0) {
+      recentList.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No files yet — upload something!</div></div>';
+    } else {
+      const recent = [...files].reverse().slice(0,5);
+      recentList.innerHTML = recent.map(f=>fileItemHTML(f,'files')).join('');
+    }
+  } catch(e) { console.error(e); }
+}
+
+function fileItemHTML(f, listId) {
+  return `<div class="file-item" id="fitem-${f.id}">
+    <span class="file-icon" style="cursor:pointer" onclick="previewFile(${f.id},'${f.name}','${f.type}',${f.size},'${f.uploaded_at}')">${fileIcon(f.type)}</span>
+    <div class="file-info" style="cursor:pointer" onclick="previewFile(${f.id},'${f.name}','${f.type}',${f.size},'${f.uploaded_at}')">
+      <div class="file-name">${f.name}</div>
+      <div class="file-meta">${formatSize(f.size)} · ${timeAgo(f.uploaded_at)}</div>
+    </div>
+    <div class="file-actions">
+      <button class="icon-btn" onclick="previewFile(${f.id},'${f.name}','${f.type}',${f.size},'${f.uploaded_at}')" title="Preview">👁</button>
+      <button class="icon-btn" onclick="downloadFile(${f.id},'${f.name}')" title="Download">⬇</button>
+      <button class="icon-btn danger" onclick="deleteFile(${f.id},'${listId}')" title="Delete">✕</button>
+    </div>
+  </div>`;
+}
+
+async function loadFiles() {
+  const el = document.getElementById('all-files-list');
+  el.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:16px">Loading...</div>';
+  try {
+    const r = await fetch(`${API}/files/list`,{headers:authHeaders()});
+    const files = await r.json();
+    if (!Array.isArray(files)||files.length===0) {
+      el.innerHTML='<div class="empty"><div class="empty-icon">📂</div><div class="empty-text">No files uploaded yet</div></div>';
+    } else {
+      el.innerHTML = [...files].reverse().map(f=>fileItemHTML(f,'all-files-list')).join('');
+    }
+  } catch(e) { el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-text">Error loading files</div></div>'; }
+}
+
+async function loadPhotos() {
+  const grid = document.getElementById('photo-grid');
+  grid.innerHTML='<div style="color:var(--text3);font-size:13px;padding:16px;grid-column:1/-1">Loading...</div>';
+  try {
+    const r = await fetch(`${API}/photos/list`,{headers:authHeaders()});
+    const photos = await r.json();
+    if (!Array.isArray(photos)||photos.length===0) {
+      grid.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🌅</div><div class="empty-text">No photos yet</div></div>';
+      return;
+    }
+  grid.innerHTML = photos.map(p=>`
+  <div class="photo-card" title="${p.name}" onclick="previewFile(${p.id},'${p.name}','image/jpeg',${p.size},'${p.uploaded_at}')">
+    <img src="/photos/thumbnail/${p.id}" 
+      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+      onload="this.nextElementSibling.style.display='none'"
+      alt="${p.name}" loading="lazy"/>
+    <div class="photo-placeholder" style="display:none"><span>🖼</span><span>${p.name.slice(-12)}</span></div>
+    <div class="photo-overlay">
+      <span class="photo-name">${p.name}</span>
+      <button class="icon-btn" style="margin-left:auto" onclick="event.stopPropagation();downloadFile(${p.id},'${p.name}')">⬇</button>
+    </div>
+  </div>`).join('');
+  } catch(e) { grid.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon">⚠️</div><div class="empty-text">Error loading photos</div></div>'; }
+}
+
+function downloadFile(id, filename) {
+  const t = localStorage.getItem('cloud_token');
+  const a = document.createElement('a');
+  a.href = `/files/direct/${id}/${encodeURIComponent(filename || 'download')}?token=${t}`;
+  a.download = filename || 'download';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  toast('Downloading...', 'success');
+}
+
+async function deleteFile(id, listId) {
+  if (!confirm('Delete this file?')) return;
+  try {
+    const r = await fetch(`${API}/files/delete/${id}`,{method:'DELETE',headers:authHeaders()});
+    if (r.ok) {
+      document.getElementById('fitem-'+id)?.remove();
+      toast('File deleted','success');
+      loadDashboard();
+    }
+  } catch(e) { toast('Delete failed','error'); }
+}
+
+function handleFiles(fileList) {
+  [...fileList].forEach(f=>uploadFile(f));
+}
+
+// drag and drop
+const zone = document.getElementById('upload-zone');
+zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag')});
+zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));
+zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag');handleFiles(e.dataTransfer.files)});
+
+async function uploadFile(file) {
+  const isPhoto = file.type.startsWith('image/');
+  const endpoint = isPhoto ? `${API}/photos/upload` : `${API}/files/upload`;
+  const progress = document.getElementById('upload-progress');
+  const bar = document.getElementById('progress-bar');
+  const label = document.getElementById('progress-label');
+  progress.style.display='block';
+  label.textContent = `Uploading ${file.name}...`;
+  bar.style.width='0%';
+
+  // animate bar
+  let w=0; const iv=setInterval(()=>{w=Math.min(w+Math.random()*15,85);bar.style.width=w+'%';},200);
+
+  const form = new FormData();
+  form.append('file',file);
+  try {
+    const r = await fetch(endpoint,{method:'POST',headers:authHeaders(),body:form});
+    const d = await r.json();
+    clearInterval(iv); bar.style.width='100%';
+    if (r.ok) {
+      toast(d.message||'Uploaded!','success');
+      addUploadHistory(file,d);
+      loadDashboard();
+    } else {
+      toast(d.detail||'Upload failed','error');
+    }
+  } catch(e) { clearInterval(iv); toast('Upload failed — server unreachable','error'); }
+  setTimeout(()=>{progress.style.display='none'; bar.style.width='0%';},1000);
+}
+
+function addUploadHistory(file, res) {
+  const h = document.getElementById('upload-history');
+  const el = document.createElement('div');
+  el.className='file-item';
+  el.style.animation='fadeIn 0.3s ease';
+  el.innerHTML=`<span class="file-icon">${fileIcon(file.type)}</span>
+    <div class="file-info">
+      <div class="file-name">${file.name}</div>
+      <div class="file-meta">${formatSize(file.size)} · just now · <span style="color:var(--green)">${res.message||'uploaded'}</span></div>
+    </div>`;
+  h.prepend(el);
+}
+
+function toast(msg,type='success') {
+  const t=document.getElementById('toast');
+  t.textContent=(type==='success'?'✓ ':'✕ ')+msg;
+  t.className='show '+type;
+  setTimeout(()=>t.className='',3000);
+}
+
+function previewFile(id, name, type, size, date) {
+  document.getElementById('modal-filename').textContent = name;
+  document.getElementById('modal-size').textContent = formatSize(size);
+  document.getElementById('modal-date').textContent = timeAgo(date);
+  document.getElementById('modal-type').textContent = type || 'unknown';
+  
+  // update download button
+  const btn = document.getElementById('modal-download-btn');
+  btn.onclick = () => downloadFile(id, name);
+
+  // build preview based on file type
+  const body = document.getElementById('modal-body');
+  const t = localStorage.getItem('cloud_token');
+const url = `/files/direct/${id}/${encodeURIComponent(name)}?token=${t}`;
+
+  if (type && type.startsWith('image/')) {
+    body.innerHTML = `<img src="${url}" alt="${name}"/>`;
+  } else if (type && type.startsWith('video/')) {
+    body.innerHTML = `<video controls autoplay>
+      <source src="${url}" type="${type}">
+      Your browser does not support video.
+    </video>`;
+  } else if (type && type.startsWith('audio/')) {
+    body.innerHTML = `<audio controls autoplay>
+      <source src="${url}" type="${type}">
+    </audio>`;
+  } else if (type && type.includes('pdf')) {
+    body.innerHTML = `<iframe src="${url}"></iframe>`;
+  } else {
+    body.innerHTML = `<div class="no-preview">
+      <div class="no-preview-icon">${fileIcon(type)}</div>
+      <p>No preview available for this file type</p>
+      <br/>
+      <button class="btn-download" onclick="downloadFile(${id},'${name}')">⬇ Download to view</button>
+    </div>`;
+  }
+
+  document.getElementById('preview-modal').classList.add('open');
+}
+
+function closePreview() {
+  document.getElementById('preview-modal').classList.remove('open');
+  document.getElementById('modal-body').innerHTML = ''; // stop video/audio playing
+}
+
+function closeModal(e) {
+  if (e.target.id === 'preview-modal') closePreview();
+}
+</script>
+</body>
+</html>

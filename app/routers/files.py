@@ -1,0 +1,180 @@
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.auth import get_current_user
+from app import models
+import hashlib, shutil, os, uuid
+from pathlib import Path
+
+router = APIRouter(prefix="/files", tags=["files"])
+
+STORAGE_DIR = Path("F:/storage/files")
+STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+def compute_hash(file_bytes: bytes) -> str:
+    """Creates a unique fingerprint for a file — used to detect duplicates"""
+    return hashlib.sha256(file_bytes).hexdigest()
+
+# --- Upload a file ---
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    file_bytes = await file.read()
+    file_hash = compute_hash(file_bytes)
+
+    # Check if this exact file was already uploaded (by hash)
+    existing = db.query(models.File).filter(
+        models.File.file_hash == file_hash,
+        models.File.owner_id == current_user.id
+    ).first()
+    if existing:
+        return {"message": "File already exists", "file_id": existing.id}
+
+    # Save file to disk with a unique name
+    ext = Path(file.filename).suffix
+    unique_name = f"{uuid.uuid4()}{ext}"
+    save_path = STORAGE_DIR / unique_name
+
+    with open(save_path, "wb") as f:
+        f.write(file_bytes)
+
+    # Save file record to database
+    db_file = models.File(
+        filename=unique_name,
+        original_name=file.filename,
+        file_type=file.content_type,
+        file_size=len(file_bytes),
+        file_hash=file_hash,
+        storage_path=str(save_path),
+        owner_id=current_user.id
+    )
+    db.add(db_file)
+    db.commit()
+    db.refresh(db_file)
+
+    return {
+        "message": "Uploaded successfully",
+        "file_id": db_file.id,
+        "filename": file.filename,
+        "size": len(file_bytes)
+    }
+
+# --- List all your files ---
+@router.get("/list")
+def list_files(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    files = db.query(models.File).filter(models.File.owner_id == current_user.id).all()
+    return [
+        {
+            "id": f.id,
+            "name": f.original_name,
+            "type": f.file_type,
+            "size": f.file_size,
+            "uploaded_at": f.uploaded_at
+        }
+        for f in files
+    ]
+
+# --- Download a file ---
+@router.get("/download/{file_id}")
+def download_file(
+    file_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    file = db.query(models.File).filter(
+        models.File.id == file_id,
+        models.File.owner_id == current_user.id
+    ).first()
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        path=file.storage_path,
+        filename=file.original_name,
+        media_type=file.file_type
+    )
+
+# --- Delete a file ---
+@router.delete("/delete/{file_id}")
+def delete_file(
+    file_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    file = db.query(models.File).filter(
+        models.File.id == file_id,
+        models.File.owner_id == current_user.id
+    ).first()
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Delete from disk
+    if os.path.exists(file.storage_path):
+        os.remove(file.storage_path)
+
+    # Delete from database
+    db.delete(file)
+    db.commit()
+
+    return {"message": "File deleted successfully"}
+
+import shutil
+
+@router.get("/storage-stats")
+def storage_stats(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    disk = shutil.disk_usage("F:/")
+    
+    user_files = db.query(models.File).filter(models.File.owner_id == current_user.id).all()
+    user_used = sum(f.file_size or 0 for f in user_files)
+    user_count = len(user_files)
+
+    return {
+        "disk_total": disk.total,
+        "disk_used": disk.used,
+        "disk_free": disk.free,
+        "user_used": user_used,
+        "user_files": user_count,
+        "percent_used": round((disk.used / disk.total) * 100, 1)
+    }
+    
+@router.get("/direct/{file_id}/{filename}")
+def direct_download(
+    file_id: int,
+    filename: str,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    from app.auth import SECRET_KEY, ALGORITHM
+    from jose import jwt, JWTError
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    file = db.query(models.File).filter(
+        models.File.id == file_id,
+        models.File.owner_id == user.id
+    ).first()
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(
+        path=file.storage_path,
+        filename=file.original_name,
+        media_type=file.file_type
+    )
