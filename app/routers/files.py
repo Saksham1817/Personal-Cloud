@@ -113,11 +113,11 @@ def list_files(
             "name": f.original_name,
             "type": f.file_type,
             "size": f.file_size,
+            "category": f.file_category,
             "uploaded_at": f.uploaded_at
         }
         for f in files
     ]
-
 # --- Download a file ---
 @router.get("/download/{file_id}")
 def download_file(

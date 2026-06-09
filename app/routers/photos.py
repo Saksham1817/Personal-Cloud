@@ -71,9 +71,10 @@ async def upload_photo(
         file_type=file.content_type,
         file_size=len(file_bytes),
         file_hash=file_hash,
+        file_category="photos",
         storage_path=str(save_path),
         owner_id=current_user.id
-    )
+        )
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
