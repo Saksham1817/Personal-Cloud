@@ -50,6 +50,9 @@ Access it from any device on the network, upload photos from your phone, preview
 
 ## 📁 Project Structure
 
+## 📁 Project Structure
+
+```
 personal-cloud-server/
 ├── app/
 │   ├── main.py          # FastAPI app, CORS, routing
@@ -64,8 +67,6 @@ personal-cloud-server/
 │   └── index.html       # Full dark mode web UI
 ├── requirements.txt
 └── README.md
-
-
 ---
 
 ## ⚙️ Setup & Installation
