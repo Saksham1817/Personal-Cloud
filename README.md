@@ -50,8 +50,6 @@ Access it from any device on the network, upload photos from your phone, preview
 
 ## 📁 Project Structure
 
-## 📁 Project Structure
-
 ```
 personal-cloud-server/
 ├── app/
