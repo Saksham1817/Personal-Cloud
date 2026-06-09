@@ -9,7 +9,6 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Personal Cloud Server")
 
-# This fixes the OPTIONS 405 error
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,6 +22,18 @@ app.include_router(files.router)
 app.include_router(photos.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/apple-touch-icon.png")
+def apple_icon():
+    return FileResponse("static/apple-touch-icon.png")
+
+@app.get("/apple-touch-icon-precomposed.png")
+def apple_icon_pre():
+    return FileResponse("static/apple-touch-icon.png")
+
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse("static/favicon.ico")
 
 @app.get("/")
 def root():
