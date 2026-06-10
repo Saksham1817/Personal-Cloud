@@ -71,7 +71,7 @@ personal-cloud-server/
 
 **1. Clone the repo**
 ```bash
-git clone https://github.com/yourusername/personal-cloud-server.git
+git clone https://github.com/Saksham1817/personal-cloud-server.git
 cd personal-cloud-server
 ```
 
