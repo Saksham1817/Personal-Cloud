@@ -71,8 +71,8 @@ personal-cloud-server/
 
 **1. Clone the repo**
 ```bash
-git clone https://github.com/Saksham1817/personal-cloud-server.git
-cd personal-cloud-server
+git clone https://github.com/Saksham1817/personal-cloud.git
+cd personal-cloud
 ```
 
 **2. Create virtual environment**
