@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>SAK Cloud</title>
+<title>Personal Cloud</title>
 <link rel="icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -777,13 +777,58 @@ zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag'
 
 async function uploadFile(file) {
   const isPhoto = file.type.startsWith('image/');
-  const endpoint = isPhoto ? `${API}/photos/upload` : `${API}/files/upload`;
+  const endpoint = isPhoto ? `/photos/upload` : `/files/upload`;
   const progress = document.getElementById('upload-progress');
   const bar = document.getElementById('progress-bar');
   const label = document.getElementById('progress-label');
-  progress.style.display='block';
+  progress.style.display = 'block';
   label.textContent = `Uploading ${file.name}...`;
-  bar.style.width='0%';
+  bar.style.width = '0%';
+
+  const form = new FormData();
+  form.append('file', file);
+
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+
+    // Real progress tracking
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100);
+        bar.style.width = percent + '%';
+        label.textContent = `Uploading ${file.name}... ${percent}%`;
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      bar.style.width = '100%';
+      try {
+        const d = JSON.parse(xhr.responseText);
+        if (xhr.status === 200) {
+          toast(d.message || 'Uploaded!', 'success');
+          addUploadHistory(file, d);
+          loadDashboard();
+        } else {
+          toast(d.detail || 'Upload failed', 'error');
+        }
+      } catch(e) {
+        toast('Upload failed', 'error');
+      }
+      setTimeout(() => { progress.style.display = 'none'; bar.style.width = '0%'; }, 1000);
+      resolve();
+    });
+
+    xhr.addEventListener('error', () => {
+      toast('Upload failed — server unreachable', 'error');
+      progress.style.display = 'none';
+      resolve();
+    });
+
+    xhr.open('POST', endpoint);
+    xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('cloud_token')}`);
+    xhr.send(form);
+  });
+}
 
   // animate bar
   let w=0; const iv=setInterval(()=>{w=Math.min(w+Math.random()*15,85);bar.style.width=w+'%';},200);

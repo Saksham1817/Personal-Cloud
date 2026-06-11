@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -16,68 +16,76 @@ THUMBS_DIR = Path("F:/storage/thumbnails")
 PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
 THUMBS_DIR.mkdir(parents=True, exist_ok=True)
 
-def make_thumbnail(image_bytes: bytes, thumb_path: Path):
-    """Creates a small preview image so listing photos is fast"""
-    img = Image.open(io.BytesIO(image_bytes))
-    img.thumbnail((300, 300))  # max 300x300 pixels
-    img.save(thumb_path)
+def create_thumbnail_task(file_path: str, thumb_path: str):
+    """Runs in background — doesn't block the upload response"""
+    try:
+        with Image.open(file_path) as img:
+            img.thumbnail((300, 300))
+            img.save(thumb_path)
+    except Exception as e:
+        print(f"Thumbnail failed: {e}")
 
-# --- Upload a photo ---
 @router.post("/upload")
 async def upload_photo(
     file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    # Only allow image files
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files allowed")
 
-    file_bytes = await file.read()
-    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    ext = os.path.splitext(file.filename)[1]
+    unique_name = f"{uuid.uuid4()}{ext}"
 
-    # Skip duplicates
-    existing = db.query(models.File).filter(
-        models.File.file_hash == file_hash,
-        models.File.owner_id == current_user.id
-    ).first()
-    if existing:
-        return {"message": "Photo already uploaded", "file_id": existing.id}
-
-    # Organize by year/month — e.g. storage/photos/2024/06/
     now = datetime.utcnow()
     month_dir = PHOTOS_DIR / str(now.year) / f"{now.month:02d}"
     month_dir.mkdir(parents=True, exist_ok=True)
 
-    ext = os.path.splitext(file.filename)[1]
-    unique_name = f"{uuid.uuid4()}{ext}"
     save_path = month_dir / unique_name
     thumb_path = THUMBS_DIR / f"thumb_{unique_name}"
 
-    # Save original photo
+    # Save in chunks
+    file_hash = hashlib.sha256()
+    file_size = 0
+
     with open(save_path, "wb") as f:
-        f.write(file_bytes)
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+            file_hash.update(chunk)
+            file_size += len(chunk)
 
-    # Save thumbnail
-    try:
-        make_thumbnail(file_bytes, thumb_path)
-    except Exception:
-        pass  # If thumbnail fails, that's okay — photo is still saved
+    hash_str = file_hash.hexdigest()
 
-    # Save record to database
+    # Check duplicate
+    existing = db.query(models.File).filter(
+        models.File.file_hash == hash_str,
+        models.File.owner_id == current_user.id
+    ).first()
+    if existing:
+        os.remove(save_path)
+        return {"message": "Photo already uploaded", "file_id": existing.id}
+
+    # Save record
     db_file = models.File(
         filename=unique_name,
         original_name=file.filename,
         file_type=file.content_type,
-        file_size=len(file_bytes),
-        file_hash=file_hash,
+        file_size=file_size,
+        file_hash=hash_str,
         file_category="photos",
         storage_path=str(save_path),
         owner_id=current_user.id
-        )
+    )
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
+
+    # Thumbnail runs in background
+    background_tasks.add_task(create_thumbnail_task, str(save_path), str(thumb_path))
 
     return {
         "message": "Photo uploaded successfully",
@@ -85,7 +93,6 @@ async def upload_photo(
         "filename": file.filename
     }
 
-# --- List all photos ---
 @router.get("/list")
 def list_photos(
     db: Session = Depends(get_db),
@@ -95,7 +102,6 @@ def list_photos(
         models.File.owner_id == current_user.id,
         models.File.file_type.like("image/%")
     ).all()
-
     return [
         {
             "id": p.id,
@@ -106,7 +112,6 @@ def list_photos(
         for p in photos
     ]
 
-# --- Get thumbnail ---
 @router.get("/thumbnail/{file_id}")
 def get_thumbnail(
     file_id: int,

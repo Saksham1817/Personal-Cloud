@@ -35,56 +35,52 @@ def get_storage_dir(content_type: str) -> Path:
         return DOCS_DIR
     return OTHERS_DIR
 
-def compute_hash(file_bytes: bytes) -> str:
-    """Creates a unique fingerprint for a file — used to detect duplicates"""
-    return hashlib.sha256(file_bytes).hexdigest()
-
-# --- Upload a file ---
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    file_bytes = await file.read()
-    file_hash = compute_hash(file_bytes)
-
-    # Check if this exact file was already uploaded (by hash)
-    existing = db.query(models.File).filter(
-        models.File.file_hash == file_hash,
-        models.File.owner_id == current_user.id
-    ).first()
-    if existing:
-        return {"message": "File already exists", "file_id": existing.id}
-
-    # Save file to disk with a unique name
     ext = Path(file.filename).suffix
     unique_name = f"{uuid.uuid4()}{ext}"
     storage_dir = get_storage_dir(file.content_type)
     save_path = storage_dir / unique_name
 
-    with open(save_path, "wb") as f:
-        f.write(file_bytes)
-
-    # Save file record to database
-    # Determine category
     ct = file.content_type or ""
     if ct.startswith("image/"): category = "photos"
     elif ct.startswith("video/"): category = "videos"
     elif ct.startswith("audio/"): category = "audio"
-    elif ct in ["application/pdf","application/msword",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/vnd.ms-excel",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "text/plain"]: category = "documents"
+    elif any(x in ct for x in ["pdf","msword","wordprocessingml","ms-excel","spreadsheetml","text/plain","powerpoint"]): category = "documents"
     else: category = "others"
+
+    file_hash = hashlib.sha256()
+    file_size = 0
+
+    with open(save_path, "wb") as f:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+            file_hash.update(chunk)
+            file_size += len(chunk)
+
+    hash_str = file_hash.hexdigest()
+
+    existing = db.query(models.File).filter(
+        models.File.file_hash == hash_str,
+        models.File.owner_id == current_user.id
+    ).first()
+    if existing:
+        os.remove(save_path)
+        return {"message": "File already exists", "file_id": existing.id}
 
     db_file = models.File(
         filename=unique_name,
         original_name=file.filename,
         file_type=file.content_type,
-        file_size=len(file_bytes),
-        file_hash=file_hash,
+        file_size=file_size,
+        file_hash=hash_str,
         file_category=category,
         storage_path=str(save_path),
         owner_id=current_user.id
@@ -97,10 +93,9 @@ async def upload_file(
         "message": "Uploaded successfully",
         "file_id": db_file.id,
         "filename": file.filename,
-        "size": len(file_bytes)
+        "size": file_size
     }
 
-# --- List all your files ---
 @router.get("/list")
 def list_files(
     db: Session = Depends(get_db),
@@ -118,7 +113,7 @@ def list_files(
         }
         for f in files
     ]
-# --- Download a file ---
+
 @router.get("/download/{file_id}")
 def download_file(
     file_id: int,
@@ -138,7 +133,6 @@ def download_file(
         media_type=file.file_type
     )
 
-# --- Delete a file ---
 @router.delete("/delete/{file_id}")
 def delete_file(
     file_id: int,
@@ -152,17 +146,13 @@ def delete_file(
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Delete from disk
     if os.path.exists(file.storage_path):
         os.remove(file.storage_path)
 
-    # Delete from database
     db.delete(file)
     db.commit()
 
     return {"message": "File deleted successfully"}
-
-import shutil
 
 @router.get("/storage-stats")
 def storage_stats(
@@ -170,7 +160,6 @@ def storage_stats(
     current_user: models.User = Depends(get_current_user)
 ):
     disk = shutil.disk_usage("F:/")
-    
     user_files = db.query(models.File).filter(models.File.owner_id == current_user.id).all()
     user_used = sum(f.file_size or 0 for f in user_files)
     user_count = len(user_files)
@@ -183,7 +172,7 @@ def storage_stats(
         "user_files": user_count,
         "percent_used": round((disk.used / disk.total) * 100, 1)
     }
-    
+
 @router.get("/direct/{file_id}/{filename}")
 def direct_download(
     file_id: int,
@@ -216,25 +205,24 @@ def direct_download(
         media_type=file.file_type
     )
 
-    
 @router.get("/list/{category}")
 def list_by_category(
-        category: str,
-        db: Session = Depends(get_db),
-        current_user: models.User = Depends(get_current_user)
-    ):
-        files = db.query(models.File).filter(
-            models.File.owner_id == current_user.id,
-            models.File.file_category == category
-        ).all()
-        return [
-            {
-                "id": f.id,
-                "name": f.original_name,
-                "type": f.file_type,
-                "size": f.file_size,
-                "category": f.file_category,
-                "uploaded_at": f.uploaded_at
-            }
-            for f in files
-        ]
+    category: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    files = db.query(models.File).filter(
+        models.File.owner_id == current_user.id,
+        models.File.file_category == category
+    ).all()
+    return [
+        {
+            "id": f.id,
+            "name": f.filename,
+            "type": f.file_type,
+            "size": f.file_size,
+            "category": f.file_category,
+            "uploaded_at": f.uploaded_at
+        }
+        for f in files
+    ]
